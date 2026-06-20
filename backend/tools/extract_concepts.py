@@ -1,0 +1,80 @@
+from pydantic import BaseModel
+from fetch_papers import Paper
+import anthropic
+import json
+
+# Literal restricts a field to a fixed set of allowed values
+from typing import Literal
+
+class PaperConcepts(BaseModel):
+    paper_id: str
+    title: str
+    research_area: str
+    subfield: str
+    assumes: list[str]
+    introduces: list[str]
+    key_methods: list[str] = []
+    datasets: list[str] = []
+    core_contribution: str
+    difficulty_level: Literal["beginner", "intermediate", "advanced"]
+
+def extract_concepts(paper: Paper) -> PaperConcepts:
+    
+    # Write a detailed prompt
+    prompt = f"""
+    Your goal is to analyze an academic research paper to extract structured information.
+
+    Paper Title: {paper.title}
+    Paper Abstract: {paper.abstract}
+    Paper Summary (TLDR): {paper.tldr}
+    Fields of Study: {paper.fields_of_study}
+
+    Extract the following information from this paper and respond with only valid JSON, no other text, no explanation, no markdown formatting, no code blocks.
+
+    The JSON must have exactly these fields:
+    - "research_area": broad field this paper belongs to (eg: "Computer Vision", "Audio Security")
+    - "subfield": specific niche within that field (eg: "Image Super-Resolution", "Deepfake Audio Detection")
+    - "assumes": a list of specific concepts, methods, or prior work this paper assumes the reader already understands
+    - "introduces": a list of new concepts or contributions this paper introduces to the field
+    - "key_methods": a list of specific technical techniques used in this paper (empty list if none)
+    - "datasets": a list of datasets used in this paper (empty list if this paper doesn't use datasets, eg: theoretical papers)
+    - "core_contribution": one clear sentence summarizing what makes this paper unique
+    - "difficulty_level": must be exactly one of "beginner", "intermediate", or "advanced"
+    """
+
+    # Call Anthropic API with prompt
+    
+    # client knows how to talk to Claude 
+    client = anthropic.Anthropic()
+
+    # client sends message and gets response
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    # Parse response into PaperConcepts object
+
+    # response_text is a string
+    response_text = response.content[0].text
+
+    # json.loads converts into a dictionary
+    data = json.loads(response_text)
+
+    paper_concepts = PaperConcepts(
+        paper_id = paper.paper_id,
+        title = paper.title,
+        research_area = data.get("research_area", ""),
+        subfield = data.get("subfield", ""),
+        assumes = data.get("assumes", []),
+        introduces = data.get("introduces", []),
+        key_methods = data.get("key_methods", []),
+        datasets = data.get("datasets", []),
+        core_contribution = data.get("core_contribution", ""),
+        difficulty_level = data.get("difficulty_level", "intermediate")
+    )
+
+    return paper_concepts
