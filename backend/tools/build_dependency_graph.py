@@ -57,3 +57,46 @@ def build_dependency_graph(concepts_list: list[PaperConcepts]) -> nx.DiGraph:
                         graph.add_edge(concept_a.paper_id, concept_b.paper_id)
     
     return graph
+
+def get_reading_order(graph: nx.DiGraph) -> list[str]:
+    reading_order = list(nx.topological_sort(graph))
+    return reading_order
+
+import time
+
+if __name__ == "__main__":
+    start_time = time.time()
+    
+    from fetch_papers import search_papers
+    from extract_concepts import extract_concepts
+    
+    papers = search_papers("deepfake audio detection")
+    
+    print("Extracting concepts for", len(papers), "papers...")
+    
+    concepts_list = []
+    for paper in papers[:5]:
+        print("Processing:", paper.title)
+        concepts = extract_concepts(paper)
+        concepts_list.append(concepts)
+    
+    print("\nBuilding dependency graph...")
+    graph = build_dependency_graph(concepts_list)
+    
+    print("\nNodes (papers):", graph.number_of_nodes())
+    print("Edges (dependencies found):", graph.number_of_edges())
+    
+    print("\nDependencies found:")
+    for edge in graph.edges():
+        from_paper = graph.nodes[edge[0]]["title"]
+        to_paper = graph.nodes[edge[1]]["title"]
+        print(f" - Read '{from_paper}' before '{to_paper}'")
+    
+    print("\nRecommended Reading Order:")
+    reading_order = get_reading_order(graph)
+    for i, paper_id in enumerate(reading_order, 1):
+        title = graph.nodes[paper_id]["title"]
+        print(f"{i}. {title}")
+    
+    end_time = time.time()
+    print(f"\nTotal time: {end_time - start_time:.2f} seconds")
