@@ -58,45 +58,34 @@ def build_dependency_graph(concepts_list: list[PaperConcepts]) -> nx.DiGraph:
     
     return graph
 
+# Create order using topological sort
 def get_reading_order(graph: nx.DiGraph) -> list[str]:
     reading_order = list(nx.topological_sort(graph))
     return reading_order
 
-import time
+def find_gaps(concepts_list: list[PaperConcepts]) -> list[dict]:
+    
+    gaps = []
+    
+    # gather all introduced concepts
+    all_introduced = []
+    for concept in concepts_list:
+        for phrase in concept.introduces:
+            all_introduced.append(phrase)
+    
+    # loop through every paper's assumes list, check if each phrase is covered somewhere in all_introduced
+    for concept in concepts_list:
+        for assumed_phrase in concept.assumes:
 
-if __name__ == "__main__":
-    start_time = time.time()
-    
-    from fetch_papers import search_papers
-    from extract_concepts import extract_concepts
-    
-    papers = search_papers("deepfake audio detection")
-    
-    print("Extracting concepts for", len(papers), "papers...")
-    
-    concepts_list = []
-    for paper in papers[:5]:
-        print("Processing:", paper.title)
-        concepts = extract_concepts(paper)
-        concepts_list.append(concepts)
-    
-    print("\nBuilding dependency graph...")
-    graph = build_dependency_graph(concepts_list)
-    
-    print("\nNodes (papers):", graph.number_of_nodes())
-    print("Edges (dependencies found):", graph.number_of_edges())
-    
-    print("\nDependencies found:")
-    for edge in graph.edges():
-        from_paper = graph.nodes[edge[0]]["title"]
-        to_paper = graph.nodes[edge[1]]["title"]
-        print(f" - Read '{from_paper}' before '{to_paper}'")
-    
-    print("\nRecommended Reading Order:")
-    reading_order = get_reading_order(graph)
-    for i, paper_id in enumerate(reading_order, 1):
-        title = graph.nodes[paper_id]["title"]
-        print(f"{i}. {title}")
-    
-    end_time = time.time()
-    print(f"\nTotal time: {end_time - start_time:.2f} seconds")
+            is_covered = False
+            for introduced_phrase in all_introduced:
+                if is_similar(assumed_phrase, introduced_phrase):
+                    is_covered = True
+                    break
+
+            if not is_covered:
+                gaps.append({
+                    "missing_concept": assumed_phrase,
+                    "assumed_by_paper": concept.title
+                })
+    return gaps
