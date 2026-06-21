@@ -61,6 +61,14 @@ def extract_concepts(paper: Paper) -> PaperConcepts:
     # response_text is a string
     response_text = response.content[0].text
 
+    # Strip markdown code block markers if Claude added them
+    response_text = response_text.strip()
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+        response_text = response_text.strip()
+
     # json.loads converts into a dictionary
     data = json.loads(response_text)
 
