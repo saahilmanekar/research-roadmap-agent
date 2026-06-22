@@ -28,13 +28,15 @@ class Paper(BaseModel):
 
 
 # Step 2: Code the search function
-def search_papers(query: str, limit: int = 10) -> list[Paper]:
+def search_papers(query: str, limit: int = 10, min_year: int = 2021, min_citations: int = 5) -> list[Paper]:
     
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
 
     params = {
         "query": query,
         "limit": limit,
+        "year": min_year,
+        "minCitationCount": min_citations,
         "fields": "paperId,title,abstract,year,citationCount,referenceCount,authors,venue,externalIds,openAccessPdf,tldr,fieldsOfStudy"
     }
     headers = {
