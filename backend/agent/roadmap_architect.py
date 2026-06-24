@@ -11,6 +11,10 @@ from tools.extract_concepts import PaperConcepts, extract_concepts
 from tools.build_dependency_graph import build_dependency_graph, get_reading_order, find_gaps, categorize_gaps
 from models.student_profile import StudentProfile, RoadmapDecision
 
+# Runs multiple tasks at the same time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
 import anthropic
 import json
 
@@ -64,9 +68,17 @@ def fetch_papers_node(state: RoadmapState) -> dict:
 
 def extract_concepts_node(state: RoadmapState) -> dict:
     papers = state["papers"]
-    paper_concepts = []
-    for paper in papers:
-        paper_concepts.append(extract_concepts(paper))
+    paper_concepts = [None] * len(papers)
+    
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_index = {
+            executor.submit(extract_concepts, paper): i 
+            for i, paper in enumerate(papers)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            paper_concepts[index] = future.result()
+    
     return {"concepts": paper_concepts}
 
 def build_graph_node(state: RoadmapState) -> dict:
@@ -183,13 +195,11 @@ def audit_roadmap_node(state: RoadmapState) -> dict:
     return {"actionable_gaps": actionable_gaps, "decision_trace": decision_trace, "iteration_count": iteration_count}
 
 def decide_next_step(state: RoadmapState) -> str:
-    if len(state["actionable_gaps"]) > 0 and state["iteration_count"] < 3:
+    if len(state["actionable_gaps"]) > 0 and state["iteration_count"] <= 1:
         return "fill_gaps"
     return "build_roadmap"
 
 def decide_after_fill(state: RoadmapState) -> str:
-    if state["iteration_count"] < 3:
-        return "audit_roadmap"
     return "build_roadmap"
 
 def fill_gaps_node(state: RoadmapState) -> dict:
@@ -270,7 +280,15 @@ def build_roadmap_node(state: RoadmapState) -> dict:
         for paper in bridge_papers_added:
             roadmap += f"- {paper.title}\n"
     
-    foundational_flags = [d for d in decision_trace if d.decision_type == "foundational_gap_flagged"]
+    seen_foundational = set()
+    foundational_flags = []
+    for d in decision_trace:
+        if d.decision_type == "foundational_gap_flagged":
+            concept = d.action_taken
+            if concept not in seen_foundational:
+                seen_foundational.add(concept)
+                foundational_flags.append(d)
+                
     if foundational_flags:
         roadmap += "\nFOUNDATIONAL CONCEPTS TO REVIEW FIRST:\n"
         for d in foundational_flags:
@@ -358,6 +376,7 @@ def run_agent(student_profile: StudentProfile) -> dict:
     }
 
 if __name__ == "__main__":
+    import time
     from models.student_profile import ResearchGoal
     
     # create a test student profile
@@ -375,10 +394,13 @@ if __name__ == "__main__":
     )
     
     print("Running Research Roadmap Agent...")
+    start_time = time.time()
     result = run_agent(test_profile)
+    end_time = time.time()
     
     print("\n" + "="*50)
     print(result["roadmap"])
     print("="*50)
     print(f"\nBridge papers added: {len(result['bridge_papers_added'])}")
     print(f"Decisions made: {len(result['decision_trace'])}")
+    print(f"Total time: {end_time - start_time:.2f} seconds")
