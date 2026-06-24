@@ -6,6 +6,11 @@ from models.student_profile import StudentProfile, RoadmapDecision
 import anthropic
 import json
 
+# LangGraph is way to build AI workflow as graph
+# StateGraph is object to build that workflow
+# END is constant that tells LangGraph to stop the graph
+from langgraph.graph import StateGraph, END
+
 import networkx as nx
 
 # TypedDict is a way to describe the structure of a dictionary
@@ -258,3 +263,78 @@ def build_roadmap_node(state: RoadmapState) -> dict:
         roadmap += f"- [{d.decision_type}] {d.action_taken}\n"
     
     return {"roadmap": roadmap}
+
+def build_agent():
+    
+    # create empty LangGraph graph
+    workflow = StateGraph(RoadmapState)
+
+    # add all the nodes
+    workflow.add_node("fetch_papers", fetch_papers_node)
+    workflow.add_node("extract_concepts", extract_concepts_node)
+    workflow.add_node("build_graph", build_graph_node)
+    workflow.add_node("detect_gaps", detect_gaps_node)
+    workflow.add_node("audit_roadmap", audit_roadmap_node)
+    workflow.add_node("fill_gaps", fill_gaps_node)
+    workflow.add_node("build_roadmap", build_roadmap_node)
+
+    # set the starting node
+    workflow.set_entry_point("fetch_papers")
+
+    # add the fixed edges
+    workflow.add_edge("fetch_papers", "extract_concepts")
+    workflow.add_edge("extract_concepts", "build_graph")
+    workflow.add_edge("build_graph", "detect_gaps")
+    workflow.add_edge("detect_gaps", "audit_roadmap")
+    
+    # add the conditional edges
+    workflow.add_conditional_edges(
+        "audit_roadmap",
+        decide_next_step,
+        {
+            "fill_gaps": "fill_gaps",
+            "build_roadmap": "build_roadmap"
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "fill_gaps",
+        decide_after_fill,
+        {
+            "audit_roadmap": "audit_roadmap",
+            "build_roadmap": "build_roadmap"
+        }
+    )
+    
+    workflow.add_edge("build_roadmap", END)
+    
+    # compiles assembled graph into runnable object
+    return workflow.compile()
+
+def run_agent(student_profile: StudentProfile) -> dict:
+    agent = build_agent()
+    
+    initial_state = {
+        "student_profile": student_profile,
+        "papers": [],
+        "concepts": [],
+        "graph": None,
+        "reading_order": [],
+        "gaps": [],
+        "categorized_gaps": [],
+        "actionable_gaps": [],
+        "bridge_papers_added": [],
+        "decision_trace": [],
+        "iteration_count": 0,
+        "roadmap": None
+    }
+    
+    # runs the agent starting from initial state to END
+    result = agent.invoke(initial_state)
+    
+    return {
+        "roadmap": result["roadmap"],
+        "decision_trace": result["decision_trace"],
+        "reading_order": result["reading_order"],
+        "bridge_papers_added": result["bridge_papers_added"]
+    }
