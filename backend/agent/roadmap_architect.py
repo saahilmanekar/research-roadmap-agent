@@ -28,7 +28,7 @@ class RoadmapState(TypedDict):
     actionable_gaps: list[dict]
     bridge_papers_added: list[Paper]
     decision_trace: list[RoadmapDecision]
-    iteration_count: 0
+    iteration_count: int
 
     # final output
     roadmap: Optional[str]
@@ -187,12 +187,74 @@ def fill_gaps_node(state: RoadmapState) -> dict:
 
     for gap in actionable_gaps:
         if gap["category"] == "foundational":
-            pass
+            decision_trace.append(RoadmapDecision(
+                decision_type="foundational_gap_flagged",
+                reasoning=f"{gap['missing_concept']} is foundational background knowledge not covered in your reading list",
+                action_taken="flagged for self-study before reading papers that assume this concept"
+            ))
         elif gap["category"] == "specialized":
-            pass
+            bridge_papers = search_papers(gap["missing_concept"], limit=1)
+            
+            if len(bridge_papers) > 0:
+                bridge_paper = bridge_papers[0]
+                papers.append(bridge_paper)
+                bridge_papers_added.append(bridge_paper)
+                decision_trace.append(RoadmapDecision(
+                    decision_type="bridge_paper_added",
+                    reasoning=f"{gap['missing_concept']} was assumed by papers but never introduced",
+                    action_taken=f"Added '{bridge_paper.title}' to cover this gap"
+                ))
+
+            else:
+                decision_trace.append(RoadmapDecision(
+                    decision_type="bridge_paper_not_found",
+                    reasoning=f"No suitable paper found for {gap['missing_concept']}",
+                    action_taken="Gap remains unfilled - student should research this independently"
+                ))
 
     return {
         "papers": papers,
         "bridge_papers_added": bridge_papers_added,
         "decision_trace": decision_trace
     }
+
+def build_roadmap_node(state: RoadmapState) -> dict:
+    student_profile = state["student_profile"]
+    papers = state["papers"]
+    reading_order = state["reading_order"]
+    decision_trace = state["decision_trace"]
+    bridge_papers_added = state["bridge_papers_added"]
+
+    paper_lookup = {p.paper_id: p for p in papers}
+
+    # Build the structured roadmap in a big string
+
+    roadmap = f"""
+    RESEARCH ROADMAP: {student_profile.research_goal.topic.upper()}
+    Goal: {student_profile.research_goal.goal_type}
+    Timeline: {student_profile.research_goal.timeline_days} days
+
+    YOUR CUSTOMIZED READING ORDER:
+    """
+
+    for i, paper_id in enumerate(reading_order, 1):
+        if paper_id in paper_lookup:
+            paper = paper_lookup[paper_id]
+            roadmap += f"{i}. {paper.title} ({paper.year})\n"
+    
+    if bridge_papers_added:
+        roadmap += "\nBRIDGE PAPERS ADDED BY AGENT:\n"
+        for paper in bridge_papers_added:
+            roadmap += f"- {paper.title}\n"
+    
+    foundational_flags = [d for d in decision_trace if d.decision_type == "foundational_gap_flagged"]
+    if foundational_flags:
+        roadmap += "\nFOUNDATIONAL CONCEPTS TO REVIEW FIRST:\n"
+        for d in foundational_flags:
+            roadmap += f"- {d.reasoning}\n"
+    
+    roadmap += "\nAGENT DECISION TRACE:\n"
+    for d in decision_trace:
+        roadmap += f"- [{d.decision_type}] {d.action_taken}\n"
+    
+    return {"roadmap": roadmap}
