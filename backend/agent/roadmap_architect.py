@@ -3,6 +3,9 @@ from tools.extract_concepts import PaperConcepts, extract_concepts
 from tools.build_dependency_graph import build_dependency_graph, get_reading_order, find_gaps, categorize_gaps
 from models.student_profile import StudentProfile, RoadmapDecision
 
+import anthropic
+import json
+
 import networkx as nx
 
 # TypedDict is a way to describe the structure of a dictionary
@@ -25,7 +28,7 @@ class RoadmapState(TypedDict):
     actionable_gaps: list[dict]
     bridge_papers_added: list[Paper]
     decision_trace: list[RoadmapDecision]
-    iteration_count: int
+    iteration_count: 0
 
     # final output
     roadmap: Optional[str]
@@ -67,6 +70,129 @@ def detect_gaps_node(state: RoadmapState) -> dict:
 
 
 def audit_roadmap_node(state: RoadmapState) -> dict:
-    student_profile = state["student_profile"]
     categorized_gaps = state["categorized_gaps"]
+    
+    # Create full text of gaps
+    gaps_text = ""
+    for i, gap in enumerate(categorized_gaps):
+        gaps_text += f"{i}. {gap['missing_concept']} (category: {gap['category']}, assumed by: {gap['assumed_by_paper']})\n"
 
+    # Write a detailed prompt
+    prompt = f"""
+    You are helping personalize a research reading roadmap for a student.
+
+    Student Profile:
+    - Academic Level: {state["student_profile"].academic_level}
+    - Topic Familiarity: {state["student_profile"].topic_familiarity}
+    - Background: {state["student_profile"].background_description}
+    - Goal: {state["student_profile"].research_goal.goal_type}
+    - Timeline: {state["student_profile"].research_goal.timeline_days} days
+
+    Here is a list of knowledge gaps detected in the student's reading list.
+    Each gap is a concept that papers assume the student knows, but no paper in the list actually teaches.
+
+    Gaps:
+    {gaps_text}
+
+    For each gap, decide:
+    1. Does this student likely already know this concept based on their background? 
+    2. If they don't know it, is it worth addressing given their goal and timeline?
+
+    Respond with ONLY valid JSON, no markdown, no code blocks.
+    Return a list of objects in this exact format:
+
+    [
+        {{
+            "index": 0,
+            "already_known": true,
+            "actionable": false,
+            "reasoning": "Student mentioned knowing basic ML which covers this"
+        }},
+        {{
+            "index": 1,
+            "already_known": false,
+            "actionable": true,
+            "reasoning": "Student has no audio background and this is assumed by 4 papers"
+        }}
+    ]
+
+    - "already_known": true if student likely knows this from their background
+    - "actionable": true if this gap should be addressed (not already known and worth addressing given timeline/goal)
+    - "reasoning": one sentence explaining your decision
+    """
+
+    # Call Anthropic API with prompt
+    
+    # client knows how to talk to Claude 
+    client = anthropic.Anthropic()
+
+    # client sends message and gets response
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    # response_text is a string
+    response_text = response.content[0].text
+
+    # Strip markdown code block markers if Claude added them
+    response_text = response_text.strip()
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+        response_text = response_text.strip()
+
+    # json.loads converts into a dictionary
+    data = json.loads(response_text)
+
+    # build actionable gaps, decision trace, iteration count
+    actionable_gaps = []
+    decision_trace = []
+
+    for item in data:
+        original_gap = categorized_gaps[item["index"]]
+
+        if item["actionable"] == True:
+            actionable_gaps.append(original_gap)
+        
+        decision_trace.append(RoadmapDecision(
+            decision_type="gap_analyzed",
+            reasoning=item["reasoning"],
+            action_taken="marked as actionable" if item["actionable"] == True else "ignored, student already knows this"
+        ))
+
+    iteration_count = state["iteration_count"] + 1
+
+    return {"actionable_gaps": actionable_gaps, "decision_trace": decision_trace, "iteration_count": iteration_count}
+
+def decide_next_step(state: RoadmapState) -> str:
+    if len(state["actionable_gaps"]) > 0 and state["iteration_count"] < 3:
+        return "fill_gaps"
+    return "build_roadmap"
+
+def decide_after_fill(state: RoadmapState) -> str:
+    if state["iteration_count"] < 3:
+        return "audit_roadmap"
+    return "build_roadmap"
+
+def fill_gaps_node(state: RoadmapState) -> dict:
+    actionable_gaps = state["actionable_gaps"]
+    papers = list(state["papers"])
+    bridge_papers_added = list(state["bridge_papers_added"])
+    decision_trace = list(state["decision_trace"])
+
+    for gap in actionable_gaps:
+        if gap["category"] == "foundational":
+            pass
+        elif gap["category"] == "specialized":
+            pass
+
+    return {
+        "papers": papers,
+        "bridge_papers_added": bridge_papers_added,
+        "decision_trace": decision_trace
+    }
