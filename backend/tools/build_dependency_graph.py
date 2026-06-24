@@ -6,7 +6,7 @@ import networkx as nx
 
 # library that turns text into vectors so computer can measure semantic similarity
 from sentence_transformers import SentenceTransformer, util
-from extract_concepts import PaperConcepts
+from tools.extract_concepts import PaperConcepts
 
 # standard, basic model
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -63,8 +63,12 @@ def build_dependency_graph(concepts_list: list[PaperConcepts]) -> nx.DiGraph:
 
 # Create order using topological sort
 def get_reading_order(graph: nx.DiGraph) -> list[str]:
-    reading_order = list(nx.topological_sort(graph))
-    return reading_order
+    try:
+        reading_order = list(nx.topological_sort(graph))
+        return reading_order
+    except:
+        print("WARNING: Cycle detected in dependency graph, using fallback ordering")
+        return list(graph.nodes())
 
 def find_gaps(concepts_list: list[PaperConcepts]) -> list[dict]:
     
@@ -132,7 +136,7 @@ def categorize_gaps(gaps: list[dict]) -> list[dict]:
     # client sends message and gets response
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=8192,
         messages=[
             {"role": "user", "content": prompt}
         ]

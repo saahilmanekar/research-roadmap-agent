@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from fetch_papers import Paper
+from tools.fetch_papers import Paper
 import anthropic
 import json
 
@@ -50,7 +50,7 @@ def extract_concepts(paper: Paper) -> PaperConcepts:
     # client sends message and gets response
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=8192,
         messages=[
             {"role": "user", "content": prompt}
         ]

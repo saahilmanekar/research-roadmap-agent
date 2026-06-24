@@ -1,3 +1,11 @@
+# Look for modules starting from backend folder not just current folder
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from tools.fetch_papers import Paper, search_papers
 from tools.extract_concepts import PaperConcepts, extract_concepts
 from tools.build_dependency_graph import build_dependency_graph, get_reading_order, find_gaps, categorize_gaps
@@ -134,7 +142,7 @@ def audit_roadmap_node(state: RoadmapState) -> dict:
     # client sends message and gets response
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=8192,
         messages=[
             {"role": "user", "content": prompt}
         ]
@@ -190,32 +198,42 @@ def fill_gaps_node(state: RoadmapState) -> dict:
     bridge_papers_added = list(state["bridge_papers_added"])
     decision_trace = list(state["decision_trace"])
 
+    # track existing paper ids to avoid duplicates
+    existing_ids = {p.paper_id for p in papers}
+
     for gap in actionable_gaps:
         if gap["category"] == "foundational":
             decision_trace.append(RoadmapDecision(
                 decision_type="foundational_gap_flagged",
                 reasoning=f"{gap['missing_concept']} is foundational background knowledge not covered in your reading list",
-                action_taken="flagged for self-study before reading papers that assume this concept"
+                action_taken=f"'{gap['missing_concept']}' flagged for self-study before reading papers that assume this concept"
             ))
         elif gap["category"] == "specialized":
             bridge_papers = search_papers(gap["missing_concept"], limit=1)
             
             if len(bridge_papers) > 0:
                 bridge_paper = bridge_papers[0]
-                papers.append(bridge_paper)
-                bridge_papers_added.append(bridge_paper)
-                decision_trace.append(RoadmapDecision(
-                    decision_type="bridge_paper_added",
-                    reasoning=f"{gap['missing_concept']} was assumed by papers but never introduced",
-                    action_taken=f"Added '{bridge_paper.title}' to cover this gap"
-                ))
+
+                if bridge_paper.paper_id not in existing_ids:
+                    papers.append(bridge_paper)
+                    bridge_papers_added.append(bridge_paper)
+                    decision_trace.append(RoadmapDecision(
+                        decision_type="bridge_paper_added",
+                        reasoning=f"{gap['missing_concept']} was assumed by papers but never introduced",
+                        action_taken=f"Added '{bridge_paper.title}' to cover '{gap['missing_concept']}'"
+                    ))
+                else:
+                    decision_trace.append(RoadmapDecision(
+                        decision_type="bridge_paper_skipped",
+                        reasoning=f"'{gap['missing_concept']}' needs a bridge paper but best candidate already in list",
+                        action_taken=f"Skipped duplicate: '{bridge_paper.title}'"
+                    ))
 
             else:
                 decision_trace.append(RoadmapDecision(
                     decision_type="bridge_paper_not_found",
                     reasoning=f"No suitable paper found for {gap['missing_concept']}",
-                    action_taken="Gap remains unfilled - student should research this independently"
-                ))
+                    action_taken=f"'{gap['missing_concept']}' remains unfilled - student should research independently"                ))
 
     return {
         "papers": papers,
@@ -338,3 +356,29 @@ def run_agent(student_profile: StudentProfile) -> dict:
         "reading_order": result["reading_order"],
         "bridge_papers_added": result["bridge_papers_added"]
     }
+
+if __name__ == "__main__":
+    from models.student_profile import ResearchGoal
+    
+    # create a test student profile
+    test_profile = StudentProfile(
+        student_id="test_001",
+        name="Saahil",
+        academic_level="undergrad_early",
+        background_description="I know basic Python and intro ML but nothing about audio processing or deepfake detection",
+        topic_familiarity="beginner",
+        research_goal=ResearchGoal(
+            topic="deepfake audio detection",
+            goal_type="join_lab_project",
+            timeline_days=14
+        )
+    )
+    
+    print("Running Research Roadmap Agent...")
+    result = run_agent(test_profile)
+    
+    print("\n" + "="*50)
+    print(result["roadmap"])
+    print("="*50)
+    print(f"\nBridge papers added: {len(result['bridge_papers_added'])}")
+    print(f"Decisions made: {len(result['decision_trace'])}")
