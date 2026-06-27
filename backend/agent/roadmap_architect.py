@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from tools.fetch_papers import Paper, search_papers
-from tools.extract_concepts import PaperConcepts, extract_concepts
+from tools.extract_concepts import PaperConcepts, extract_concepts_batch
 from tools.build_dependency_graph import build_dependency_graph, get_reading_order, find_gaps, categorize_gaps
 from models.student_profile import StudentProfile, RoadmapDecision
 
@@ -66,6 +66,7 @@ def fetch_papers_node(state: RoadmapState) -> dict:
     papers = search_papers(topic, limit=limit)
     return {"papers": papers}
 
+"""
 def extract_concepts_node(state: RoadmapState) -> dict:
     papers = state["papers"]
     paper_concepts = [None] * len(papers)
@@ -79,6 +80,14 @@ def extract_concepts_node(state: RoadmapState) -> dict:
             index = future_to_index[future]
             paper_concepts[index] = future.result()
     
+    return {"concepts": paper_concepts}
+"""
+
+def extract_concepts_node(state: RoadmapState) -> dict:
+    papers = state["papers"]
+    print(f"DEBUG: extracting concepts for {len(papers)} papers")
+    paper_concepts = extract_concepts_batch(papers)
+    print(f"DEBUG: got {len(paper_concepts)} concepts back")
     return {"concepts": paper_concepts}
 
 def build_graph_node(state: RoadmapState) -> dict:
@@ -207,6 +216,7 @@ def fill_gaps_node(state: RoadmapState) -> dict:
     papers = list(state["papers"])
     bridge_papers_added = list(state["bridge_papers_added"])
     decision_trace = list(state["decision_trace"])
+    topic = state["student_profile"].research_goal.topic
 
     # track existing paper ids to avoid duplicates
     existing_ids = {p.paper_id for p in papers}
@@ -219,6 +229,7 @@ def fill_gaps_node(state: RoadmapState) -> dict:
                 action_taken=f"'{gap['missing_concept']}' flagged for self-study before reading papers that assume this concept"
             ))
         elif gap["category"] == "specialized":
+            query = f"{gap['missing_concept']} {topic}"
             bridge_papers = search_papers(gap["missing_concept"], limit=1)
             
             if len(bridge_papers) > 0:
@@ -227,6 +238,7 @@ def fill_gaps_node(state: RoadmapState) -> dict:
                 if bridge_paper.paper_id not in existing_ids:
                     papers.append(bridge_paper)
                     bridge_papers_added.append(bridge_paper)
+                    existing_ids.add(bridge_paper.paper_id)
                     decision_trace.append(RoadmapDecision(
                         decision_type="bridge_paper_added",
                         reasoning=f"{gap['missing_concept']} was assumed by papers but never introduced",

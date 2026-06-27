@@ -18,6 +18,106 @@ class PaperConcepts(BaseModel):
     core_contribution: str
     difficulty_level: Literal["beginner", "intermediate", "advanced"]
 
+def extract_concepts_batch(papers: list[Paper]) -> list[PaperConcepts]:
+
+    # Write a detailed prompt
+    papers_text = ""
+    for i, paper in enumerate(papers):
+        papers_text += f"""
+    Paper {i}:
+    Title: {paper.title}
+    Abstract: {paper.abstract}
+    TLDR: {paper.tldr}
+    Fields of Study: {paper.fields_of_study}
+    """
+
+    prompt = f"""
+    You are analyzing multiple research papers to extract structured information from each one.
+
+    Here are {len(papers)} papers:
+
+    {papers_text}
+
+    For each paper extract the following and respond with ONLY a valid JSON array, no markdown, no code blocks.
+    Return one object per paper in the exact same order, using this structure:
+
+    [
+        {{
+            "index": 0,
+            "research_area": "broad field this paper belongs to",
+            "subfield": "specific niche within that field",
+            "assumes": ["concept 1", "concept 2"],
+            "introduces": ["new concept 1", "new concept 2"],
+            "key_methods": ["method 1", "method 2"],
+            "core_contribution": "one sentence summary of what makes this paper unique",
+            "difficulty_level": "beginner or intermediate or advanced"
+        }},
+        {{
+            "index": 1,
+            ...
+        }}
+    ]
+
+    Rules:
+    - assumes: max 5 items
+    - introduces: max 5 items  
+    - key_methods: max 5 items
+    - difficulty_level must be exactly one of: "beginner", "intermediate", "advanced"
+    - Return ONLY the JSON array, nothing else
+    """
+
+    # Call Anthropic API with prompt
+    
+    # client knows how to talk to Claude 
+    client = anthropic.Anthropic()
+
+    # client sends message and gets response
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8192,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    # Parse response
+
+    # response_text is a string
+    response_text = response.content[0].text
+
+    # Strip markdown code block markers if Claude added them
+    response_text = response_text.strip()
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+        response_text = response_text.strip()
+
+    # json.loads converts into a dictionary
+    data = json.loads(response_text)
+
+    list_paper_concepts = []
+
+    for item in data:
+        original_paper = papers[item["index"]]
+        paper_concepts = PaperConcepts(
+            paper_id=original_paper.paper_id,
+            title=original_paper.title,
+            research_area=item.get("research_area", ""),
+            subfield=item.get("subfield", ""),
+            assumes=item.get("assumes", []),
+            introduces=item.get("introduces", []),
+            key_methods=item.get("key_methods", []),
+            datasets=item.get("datasets", []),
+            core_contribution=item.get("core_contribution", ""),
+            difficulty_level=item.get("difficulty_level", "intermediate")
+        )
+        list_paper_concepts.append(paper_concepts)
+    
+    return list_paper_concepts
+
+
+
 def extract_concepts(paper: Paper) -> PaperConcepts:
     
     # Write a detailed prompt
