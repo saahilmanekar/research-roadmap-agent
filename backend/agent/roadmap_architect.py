@@ -11,9 +11,6 @@ from tools.extract_concepts import PaperConcepts, extract_concepts_batch
 from tools.build_dependency_graph import build_dependency_graph, get_reading_order, find_gaps, categorize_gaps
 from models.student_profile import StudentProfile, RoadmapDecision
 
-# Runs multiple tasks at the same time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 
 import anthropic
 import json
@@ -65,23 +62,6 @@ def fetch_papers_node(state: RoadmapState) -> dict:
     
     papers = search_papers(topic, limit=limit)
     return {"papers": papers}
-
-"""
-def extract_concepts_node(state: RoadmapState) -> dict:
-    papers = state["papers"]
-    paper_concepts = [None] * len(papers)
-    
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_index = {
-            executor.submit(extract_concepts, paper): i 
-            for i, paper in enumerate(papers)
-        }
-        for future in as_completed(future_to_index):
-            index = future_to_index[future]
-            paper_concepts[index] = future.result()
-    
-    return {"concepts": paper_concepts}
-"""
 
 def extract_concepts_node(state: RoadmapState) -> dict:
     papers = state["papers"]
