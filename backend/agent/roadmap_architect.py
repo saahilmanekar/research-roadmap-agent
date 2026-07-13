@@ -386,33 +386,3 @@ def run_agent(student_profile: StudentProfile) -> dict:
         "reading_order": result["reading_order"],
         "bridge_papers_added": result["bridge_papers_added"]
     }
-
-if __name__ == "__main__":
-    import time
-    from models.student_profile import ResearchGoal
-    
-    # create a test student profile
-    test_profile = StudentProfile(
-        student_id="test_001",
-        name="Saahil",
-        academic_level="undergrad_early",
-        background_description="I know basic Python and intro ML but nothing about audio processing or deepfake detection",
-        topic_familiarity="beginner",
-        research_goal=ResearchGoal(
-            topic="deepfake audio detection",
-            goal_type="join_lab_project",
-            timeline_days=14
-        )
-    )
-    
-    print("Running Research Roadmap Agent...")
-    start_time = time.time()
-    result = run_agent(test_profile)
-    end_time = time.time()
-    
-    print("\n" + "="*50)
-    print(result["roadmap"])
-    print("="*50)
-    print(f"\nBridge papers added: {len(result['bridge_papers_added'])}")
-    print(f"Decisions made: {len(result['decision_trace'])}")
-    print(f"Total time: {end_time - start_time:.2f} seconds")
