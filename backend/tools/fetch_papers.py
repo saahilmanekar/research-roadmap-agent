@@ -11,7 +11,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Step 1: Define what a paper even looks like
+# Define what a paper even looks like
 class Paper(BaseModel):
     paper_id: str
     title: str
@@ -27,7 +27,7 @@ class Paper(BaseModel):
     fields_of_study: list[str] | None
 
 
-# Step 2: Code the search function
+# Code the search function
 def search_papers(query: str, limit: int = 10, min_year: int = 2021, min_citations: int = 5) -> list[Paper]:
     
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -40,7 +40,7 @@ def search_papers(query: str, limit: int = 10, min_year: int = 2021, min_citatio
         "fields": "paperId,title,abstract,year,citationCount,referenceCount,authors,venue,externalIds,openAccessPdf,tldr,fieldsOfStudy"
     }
     headers = {
-        "x-api-key": os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+        "x-api-key": os.getenv("SEMANTIC_SCHOLAR_API_KEY") 
     }
 
     # Make request
