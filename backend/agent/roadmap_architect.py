@@ -208,7 +208,7 @@ def fill_gaps_node(state: RoadmapState) -> dict:
             ))
         elif gap["category"] == "specialized":
             query = f"{gap['missing_concept']} {topic}"
-            bridge_papers = search_papers(gap["missing_concept"], limit=1)
+            bridge_papers = search_papers(query, limit=1)
             
             if len(bridge_papers) > 0:
                 bridge_paper = bridge_papers[0]
