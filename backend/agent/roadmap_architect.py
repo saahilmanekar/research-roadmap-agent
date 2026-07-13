@@ -65,9 +65,7 @@ def fetch_papers_node(state: RoadmapState) -> dict:
 
 def extract_concepts_node(state: RoadmapState) -> dict:
     papers = state["papers"]
-    print(f"DEBUG: extracting concepts for {len(papers)} papers")
     paper_concepts = extract_concepts_batch(papers)
-    print(f"DEBUG: got {len(paper_concepts)} concepts back")
     return {"concepts": paper_concepts}
 
 def build_graph_node(state: RoadmapState) -> dict:
